@@ -22,7 +22,7 @@ export default function Layout() {
             borderRadius: 16,
             boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
             zIndex: 999999,
-            background: "transparent",
+            background: "white",
           }}
         />
       )}
