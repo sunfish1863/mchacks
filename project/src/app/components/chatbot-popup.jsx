@@ -341,7 +341,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
     };
 
       setMessages((prev) => [...prev, assistantMessage]);
-    }, 300);
   };
 
   const handleKeyPress = (e) => {
