@@ -108,12 +108,9 @@ export function ChatbotPopup({ isOpen, onClose }) {
       const dx = e.clientX - dragStart.startMouseX;
       const dy = e.clientY - dragStart.startMouseY;
 
-      // moving right => right offset decreases
-      // moving down  => bottom offset decreases
       let newRight = dragStart.startRight - dx;
       let newBottom = dragStart.startBottom - dy;
 
-      // keep inside viewport
       const maxRight = window.innerWidth - pad - dimensions.width;
       const maxBottom = window.innerHeight - pad - dimensions.height;
 
@@ -151,7 +148,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
     const startRight = offsets.right;
     const startBottom = offsets.bottom;
 
-    // derive left/top from right/bottom anchoring
     const startLeft = window.innerWidth - startRight - startWidth;
     const startTop = window.innerHeight - startBottom - startHeight;
 
@@ -167,33 +163,27 @@ export function ChatbotPopup({ isOpen, onClose }) {
       const maxWidth = window.innerWidth - pad * 2;
       const maxHeight = window.innerHeight - pad * 2;
 
-      // LEFT: right stays fixed, left edge follows mouse
       if (resizeDirection.includes("left")) {
         newWidth = window.innerWidth - startRight - mouseX;
       }
 
-      // RIGHT: left stays fixed, right edge follows mouse
       if (resizeDirection.includes("right")) {
         newRight = window.innerWidth - mouseX;
         newWidth = window.innerWidth - newRight - startLeft;
       }
 
-      // TOP: bottom stays fixed, top edge follows mouse
       if (resizeDirection.includes("top")) {
         newHeight = window.innerHeight - startBottom - mouseY;
       }
 
-      // BOTTOM: top stays fixed, bottom edge follows mouse
       if (resizeDirection.includes("bottom")) {
         newBottom = window.innerHeight - mouseY;
         newHeight = window.innerHeight - newBottom - startTop;
       }
 
-      // clamp sizes
       newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
       newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
 
-      // clamp offsets so window doesn't drift offscreen
       newRight = Math.max(pad, Math.min(window.innerWidth - pad - newWidth, newRight));
       newBottom = Math.max(pad, Math.min(window.innerHeight - pad - newHeight, newBottom));
 
@@ -209,12 +199,11 @@ export function ChatbotPopup({ isOpen, onClose }) {
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
 
-  return () => {
-    document.removeEventListener("mousemove", handleMouseMove);
-    document.removeEventListener("mouseup", handleMouseUp);
-  };
-}, [isResizing, resizeDirection, dimensions, offsets]);
-
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isResizing, resizeDirection, dimensions, offsets]);
 
   const handleSendMessage = async () => {
     const text = inputValue.trim();
@@ -227,26 +216,18 @@ export function ChatbotPopup({ isOpen, onClose }) {
       timestamp: new Date(),
     };
 
+    // add user message ONCE
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
-    setMessages(prev => [...prev, userMessage]);
-    const messageText = inputValue;
-    setInputValue('');
 
     try {
-      const response = await fetch('http://localhost:8000/api/gumloop/start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ website_url: messageText }),
+      const response = await fetch("http://localhost:8000/api/gumloop/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ website_url: text }),
       });
 
       const data = await response.json();
-      // if (!response.ok) {
-      //   throw new Error(`HTTP ${response.status}: ${await response.text()}`);
-      // }
-      //console.log("Gumloop status:", response.status);
 
       // If backend wrapped the real JSON inside data.body as a string:
       let runId;
@@ -257,90 +238,90 @@ export function ChatbotPopup({ isOpen, onClose }) {
       } else {
         runId = data.run_id;
       }
+
       console.log("Gumloop body:", data);
       console.log("Gumloop runid:", runId);
 
       if (!runId) {
-        throw new Error('No run_id received from Gumloop');
+        throw new Error("No run_id received from Gumloop");
       }
 
-      // Poll for status every 3 seconds
       const pollInterval = setInterval(async () => {
         try {
-          const statusResponse = await fetch(`http://localhost:8000/api/gumloop/status/${runId}`);
+          const statusResponse = await fetch(
+            `http://localhost:8000/api/gumloop/status/${runId}`
+          );
+
           if (!statusResponse.ok) {
             throw new Error(`Status HTTP ${statusResponse.status}`);
           }
 
           const statusData = await statusResponse.json();
-          console.log("get ping");
-          // Assume statusData has 'result' when completed, or 'error'
           console.log("Gumloop status data:", statusData);
+
           if (statusData.state) {
-            if (statusData.state === 'FAILED') {
+            if (statusData.state === "FAILED") {
               clearInterval(pollInterval);
               const assistantMessage = {
                 id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: statusData.log,
-                timestamp: new Date()
+                role: "assistant",
+                content: statusData.log || "Run failed.",
+                timestamp: new Date(),
               };
-              setMessages(prev => [...prev, assistantMessage]);
-            } else if (statusData.state === 'DONE') {
+              setMessages((prev) => [...prev, assistantMessage]);
+            } else if (statusData.state === "DONE") {
               clearInterval(pollInterval);
               const assistantMessage = {
                 id: (Date.now() + 1).toString(),
-                role: 'assistant',
-                content: statusData.outputs.output,
-                timestamp: new Date()
+                role: "assistant",
+                content: statusData.outputs?.output ?? "(No output returned.)",
+                timestamp: new Date(),
               };
-              setMessages(prev => [...prev, assistantMessage]);
+              setMessages((prev) => [...prev, assistantMessage]);
             }
           } else if (statusData.error) {
             clearInterval(pollInterval);
             const errorMessage = {
               id: (Date.now() + 1).toString(),
-              role: 'assistant',
+              role: "assistant",
               content: `Error: ${statusData.error}`,
-              timestamp: new Date()
+              timestamp: new Date(),
             };
-            setMessages(prev => [...prev, errorMessage]);
+            setMessages((prev) => [...prev, errorMessage]);
           }
-          // If neither, continue polling
         } catch (pollError) {
-          console.error('Polling error:', pollError);
+          console.error("Polling error:", pollError);
           clearInterval(pollInterval);
           const errorMessage = {
             id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            content: 'Sorry, there was an error checking the response.',
-            timestamp: new Date()
+            role: "assistant",
+            content: "Sorry, there was an error checking the response.",
+            timestamp: new Date(),
           };
-          setMessages(prev => [...prev, errorMessage]);
+          setMessages((prev) => [...prev, errorMessage]);
         }
-      }, 3000);  // Poll every 3 seconds
-
+      }, 3000);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Error sending message:", error);
       const errorMessage = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: 'Sorry, there was an error connecting to the server.',
-        timestamp: new Date()
+        role: "assistant",
+        content: "Sorry, there was an error connecting to the server.",
+        timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages((prev) => [...prev, errorMessage]);
     }
   };
 
   const handleNavigate = (section) => {
     const assistantMessage = {
       id: Date.now().toString(),
-      role: 'assistant',
+      role: "assistant",
       content: `I can help you navigate to "${section}". This section typically contains ${section.toLowerCase()} related information and features. Would you like more specific guidance about what you can find there?`,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+    setMessages((prev) => [...prev, assistantMessage]);
   };
 
   const handleKeyPress = (e) => {
@@ -360,7 +341,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
   };
 
   const handleDragStart = (e) => {
-    // don’t start drag if you’re resizing
     if (isResizing) return;
 
     e.preventDefault();
@@ -387,9 +367,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
         transition: isResizing || isDragging ? "none" : "width 0.2s, height 0.2s",
       }}
     >
-      <div
-        className={`bg-white rounded-2xl shadow-2xl border border-gray-200 relative h-full w-full flex flex-col`}
-      >
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 relative h-full w-full flex flex-col">
         {/* Header */}
         <div className="relative z-20 flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-2xl">
           <div className="flex items-center gap-3">
@@ -418,12 +396,9 @@ export function ChatbotPopup({ isOpen, onClose }) {
               onClick={() => setIsMinimized(!isMinimized)}
               className="h-8 w-8 text-white hover:bg-white/20"
             >
-              {isMinimized ? (
-                <Maximize2 className="h-4 w-4" />
-              ) : (
-                <Minimize2 className="h-4 w-4" />
-              )}
+              {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
             </Button>
+
             <Button
               variant="ghost"
               size="icon"
@@ -489,7 +464,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
         {/* Content */}
         {!isMinimized && (
           <>
-            {/* Messages Area */}
             <ScrollArea className="flex-1 p-4 sm:p-6" style={{ maxHeight: "calc(100% - 120px)" }}>
               <div>
                 {messages.map((message) => (
@@ -499,7 +473,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
               </div>
             </ScrollArea>
 
-            {/* Input Area */}
             <div className="p-4 sm:p-5 border-t border-gray-200">
               <div className="flex gap-2 sm:gap-3">
                 <Input
