@@ -24,7 +24,8 @@ app.post("/api/gumloop/start", async (req, res) => {
                 Authorization: `Bearer ${process.env.GUMLOOP_API_KEY}`,
             },
             body: JSON.stringify({
-                website_url: req.body.website_url,
+                maps_url: req.body.maps_url,
+                interests: req.body.interests,
             }),
         });
 
