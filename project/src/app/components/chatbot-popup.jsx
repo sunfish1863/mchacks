@@ -88,6 +88,39 @@ const getMockWebsiteData = (url) => {
   return mockData.default;
 };
 
+// Get website favicon
+const getWebsiteFavicon = () => {
+  try {
+    // Try multiple methods to get favicon
+    const domain = window.location.origin;
+    
+    // Method 1: Check for link rel="icon" tags
+    const linkTags = document.querySelectorAll('link[rel*="icon"]');
+    if (linkTags.length > 0) {
+      const href = linkTags[0].getAttribute('href');
+      if (href) {
+        return href.startsWith('http') ? href : new URL(href, domain).href;
+      }
+    }
+    
+    // Method 2: Try common favicon paths
+    const commonPaths = ['/favicon.ico', '/favicon.png', '/apple-touch-icon.png'];
+    for (const path of commonPaths) {
+      const testUrl = new URL(path, domain).href;
+      // We'll return it and let the browser handle 404s
+      return testUrl;
+    }
+    
+    // Method 3: Google favicon service as fallback
+    const hostname = new URL(domain).hostname;
+    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+  } catch (e) {
+    // Fallback to Google favicon service
+    const hostname = window.location.hostname;
+    return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+  }
+};
+
 export function ChatbotPopup({ isOpen, onClose }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState([
@@ -100,6 +133,11 @@ export function ChatbotPopup({ isOpen, onClose }) {
   ]);
   const [inputValue, setInputValue] = useState('');
   const [currentWebsite, setCurrentWebsite] = useState(null);
+  const [favicon, setFavicon] = useState(null);
+  const [dimensions, setDimensions] = useState({ width: 384, height: 600 }); // w-96 = 384px, h-[600px] = 600px
+  const [isResizing, setIsResizing] = useState(false);
+  const [resizeDirection, setResizeDirection] = useState(null);
+  const popupRef = useRef(null);
   const scrollAreaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
@@ -110,6 +148,12 @@ export function ChatbotPopup({ isOpen, onClose }) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Get favicon on mount
+  useEffect(() => {
+    const fav = getWebsiteFavicon();
+    setFavicon(fav);
+  }, []);
 
   // Auto-read current page once when injected (for extension)
   useEffect(() => {
@@ -129,6 +173,51 @@ export function ChatbotPopup({ isOpen, onClose }) {
       ]);
     }
   }, []);
+
+  // Resize handlers
+  useEffect(() => {
+    if (!isResizing || !popupRef.current) return;
+
+    const startRect = popupRef.current.getBoundingClientRect();
+    const startDimensions = dimensions;
+    const startX = window.innerWidth - startRect.right;
+    const startY = window.innerHeight - startRect.bottom;
+
+    const handleMouseMove = (e) => {
+      const minWidth = 320;
+      const minHeight = 400;
+      const maxWidth = window.innerWidth - 48;
+      const maxHeight = window.innerHeight - 48;
+
+      let newWidth = startDimensions.width;
+      let newHeight = startDimensions.height;
+
+      if (resizeDirection.includes('right') || resizeDirection === 'bottom-right') {
+        const rightEdge = window.innerWidth - e.clientX;
+        newWidth = Math.min(maxWidth, Math.max(minWidth, window.innerWidth - rightEdge - startX));
+      }
+      
+      if (resizeDirection.includes('bottom') || resizeDirection === 'bottom-right') {
+        const bottomEdge = window.innerHeight - e.clientY;
+        newHeight = Math.min(maxHeight, Math.max(minHeight, window.innerHeight - bottomEdge - startY));
+      }
+
+      setDimensions({ width: newWidth, height: newHeight });
+    };
+
+    const handleMouseUp = () => {
+      setIsResizing(false);
+      setResizeDirection(null);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isResizing, resizeDirection]);
 
   const handleSendMessage = () => {
     if (!inputValue.trim()) return;
@@ -205,11 +294,26 @@ export function ChatbotPopup({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  const handleResizeStart = (direction) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    setResizeDirection(direction);
+  };
+
   return (
-    <div className="fixed bottom-6 right-6 z-50">
+    <div 
+      ref={popupRef}
+      className="fixed bottom-6 right-6 z-50"
+      style={{
+        width: isMinimized ? '320px' : `${dimensions.width}px`,
+        height: isMinimized ? '64px' : `${dimensions.height}px`,
+        transition: isResizing ? 'none' : 'width 0.2s, height 0.2s',
+      }}
+    >
       <div
-        className={`bg-white rounded-2xl shadow-2xl border border-gray-200 transition-all duration-300 ${
-          isMinimized ? 'w-80 h-16' : 'w-96 h-[600px]'
+        className={`bg-white rounded-2xl shadow-2xl border border-gray-200 relative h-full w-full flex flex-col ${
+          isMinimized ? '' : ''
         }`}
       >
         {/* Header */}
@@ -219,8 +323,8 @@ export function ChatbotPopup({ isOpen, onClose }) {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold text-white">AI Navigation Assistant</h3>
-              <p className="text-xs text-blue-100">Online</p>
+              <h3 className="font-semibold text-white text-base sm:text-lg">AI Navigation Assistant</h3>
+              <p className="text-xs sm:text-sm text-blue-100">Online</p>
             </div>
           </div>
           
@@ -244,14 +348,38 @@ export function ChatbotPopup({ isOpen, onClose }) {
           </div>
         </div>
 
+        {/* Resize handles */}
+        {!isMinimized && (
+          <>
+            {/* Right edge */}
+            <div
+              onMouseDown={handleResizeStart('right')}
+              className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-200/30 transition-colors rounded-r-2xl"
+              style={{ zIndex: 10 }}
+            />
+            {/* Bottom edge */}
+            <div
+              onMouseDown={handleResizeStart('bottom')}
+              className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-200/30 transition-colors rounded-b-2xl"
+              style={{ zIndex: 10 }}
+            />
+            {/* Bottom-right corner */}
+            <div
+              onMouseDown={handleResizeStart('bottom-right')}
+              className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize hover:bg-blue-200/30 transition-colors rounded-br-2xl"
+              style={{ zIndex: 10 }}
+            />
+          </>
+        )}
+
         {/* Content */}
         {!isMinimized && (
           <>
             {/* Messages Area */}
-            <ScrollArea className="h-[440px] p-4">
+            <ScrollArea className="flex-1 p-4 sm:p-6" style={{ maxHeight: 'calc(100% - 120px)' }}>
               <div>
                 {messages.map((message) => (
-                  <ChatMessage key={message.id} message={message} />
+                  <ChatMessage key={message.id} message={message} favicon={favicon} />
                 ))}
                 
                 {currentWebsite && (
@@ -266,14 +394,15 @@ export function ChatbotPopup({ isOpen, onClose }) {
             </ScrollArea>
 
             {/* Input Area */}
-            <div className="p-4 border-t border-gray-200">
-              <div className="flex gap-2">
+            <div className="p-4 sm:p-5 border-t border-gray-200">
+              <div className="flex gap-2 sm:gap-3">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Paste a website URL or ask a question..."
-                  className="flex-1"
+                  className="flex-1 text-sm sm:text-base"
+                  style={{ backgroundColor: '#C9C9C9' }}
                 />
                 <Button
                   onClick={handleSendMessage}
