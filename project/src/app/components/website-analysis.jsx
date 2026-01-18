@@ -1,56 +1,60 @@
-// project/src/app/components/website-analysis.jsx
-import { Globe, MapPin, ShoppingBag, Info, MessageCircle, Navigation } from "lucide-react";
-
-const iconMap = {
-  shop: ShoppingBag,
-  info: Info,
-  contact: MessageCircle,
-  navigation: Navigation,
-  default: Globe,
-};
+import { ExternalLink, FileText, Navigation, ShoppingCart, Info, MessageCircle } from "lucide-react";
 
 export function WebsiteAnalysis({ data, onNavigate }) {
   const getIcon = (iconName) => {
-    const IconComponent = iconMap[iconName] || iconMap.default;
-    return IconComponent;
+    switch (iconName) {
+      case "navigation":
+        return <Navigation className="w-4 h-4" />;
+      case "shop":
+        return <ShoppingCart className="w-4 h-4" />;
+      case "info":
+        return <Info className="w-4 h-4" />;
+      case "contact":
+        return <MessageCircle className="w-4 h-4" />;
+      default:
+        return <FileText className="w-4 h-4" />;
+    }
   };
 
   return (
-    <div className="mb-4 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <div className="mb-3">
-        <div className="flex items-center gap-2 mb-1">
-          <Globe className="h-5 w-5 text-blue-600" />
-          <h3 className="font-semibold text-lg text-gray-900">{data.title}</h3>
+    <div className="space-y-4 mb-4">
+      {/* Website Header */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+        <div className="flex items-start gap-3">
+          <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-white shadow-sm flex items-center justify-center">
+            <ExternalLink className="w-5 h-5 text-blue-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-gray-900 mb-1">{data.title}</h3>
+            <p className="text-xs text-gray-600 truncate">{data.url}</p>
+          </div>
         </div>
-        <p className="text-sm text-gray-600 mt-1">{data.summary}</p>
+        
+        <div className="mt-3 pt-3 border-t border-blue-100">
+          <p className="text-sm text-gray-700 leading-relaxed">{data.summary}</p>
+        </div>
       </div>
 
+      {/* Navigation Sections */}
       <div className="space-y-2">
-        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-          Key Sections
-        </div>
-        {data.sections?.map((section, idx) => {
-          const IconComponent = getIcon(section.icon);
-          return (
+        <p className="text-xs font-semibold text-gray-600 px-1">Quick Navigation</p>
+        <div className="grid gap-2">
+          {data.sections.map((section, index) => (
             <button
-              key={idx}
+              key={index}
               onClick={() => onNavigate(section.name)}
-              className="w-full flex items-start gap-3 p-3 rounded-xl bg-gray-50 hover:bg-blue-50 border border-gray-200 hover:border-blue-300 transition-colors text-left group"
+              className="flex items-start gap-3 p-3 rounded-lg bg-white border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-all text-left group"
             >
-              <div className="mt-0.5">
-                <IconComponent className="h-4 w-4 text-gray-600 group-hover:text-blue-600" />
+              <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-gray-100 group-hover:bg-blue-100 flex items-center justify-center transition-colors">
+                {getIcon(section.icon)}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-medium text-sm text-gray-900 group-hover:text-blue-900">
-                  {section.name}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {section.description}
-                </div>
+                <div className="font-medium text-sm text-gray-900">{section.name}</div>
+                <div className="text-xs text-gray-600 mt-0.5">{section.description}</div>
               </div>
             </button>
-          );
-        })}
+          ))}
+        </div>
       </div>
     </div>
   );

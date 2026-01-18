@@ -1,8 +1,10 @@
-// project/src/app/components/chatbot-popup.jsx
-import { useEffect, useRef, useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { X, Minimize2, Maximize2, Send, Sparkles } from "lucide-react";
 import { ChatMessage } from "./chat-message";
 import { WebsiteAnalysis } from "./website-analysis";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { ScrollArea } from "./ui/scroll-area";
 
 // Mock website data generator
 const getMockWebsiteData = (url) => {
@@ -56,89 +58,93 @@ export function ChatbotPopup({ isOpen, onClose }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const [messages, setMessages] = useState([
     {
-      id: "1",
-      role: "assistant",
-      content:
-        "Hi! 👋 I'm your website navigation assistant. Paste any website URL and I’ll help you understand and navigate it.",
-      timestamp: new Date().toISOString(),
-    },
+      id: '1',
+      role: 'assistant',
+      content: 'Hi! 👋 I\'m your website navigation assistant. Paste any website URL and I\'ll help you understand and navigate it.',
+      timestamp: new Date()
+    }
   ]);
-
-  const [inputValue, setInputValue] = useState("");
+  const [inputValue, setInputValue] = useState('');
   const [currentWebsite, setCurrentWebsite] = useState(null);
+  const scrollAreaRef = useRef(null);
   const messagesEndRef = useRef(null);
 
-  useEffect(() => {
+  const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, currentWebsite]);
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const handleSendMessage = () => {
-    const text = inputValue.trim();
-    if (!text) return;
+    if (!inputValue.trim()) return;
 
     const userMessage = {
       id: Date.now().toString(),
-      role: "user",
-      content: text,
-      timestamp: new Date().toISOString(),
+      role: 'user',
+      content: inputValue,
+      timestamp: new Date()
     };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setInputValue("");
+    setMessages(prev => [...prev, userMessage]);
+    setInputValue('');
 
+    // Check if the message contains a URL
     const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-zA-Z0-9-]+\.[a-zA-Z]{2,})/g;
-    const urls = text.match(urlRegex);
+    const urls = inputValue.match(urlRegex);
 
     setTimeout(() => {
       if (urls && urls.length > 0) {
         let url = urls[0];
-        if (!url.startsWith("http")) url = "https://" + url;
+        if (!url.startsWith('http')) {
+          url = 'https://' + url;
+        }
 
         const websiteData = getMockWebsiteData(url);
         setCurrentWebsite(websiteData);
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: `Great! I've analyzed ${websiteData.title}. Here's what I found:`,
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+        const assistantMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `Great! I've analyzed ${websiteData.title}. Here's what I found:`,
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, assistantMessage]);
       } else {
+        // General response for non-URL messages
         const responses = [
-          "I’m here to help you navigate websites. Paste a URL and I’ll break it down.",
-          "Drop a website URL (like amazon.com) and tell me what you’re trying to do.",
-          "Paste a URL and I’ll point you to the right section + next steps.",
+          "I'm here to help you navigate websites! Just paste a URL and I'll break it down for you.",
+          "Feel free to ask me anything about website navigation, or share a URL to get started!",
+          "I can help you understand any website better. Try pasting a URL like amazon.com or github.com!"
         ];
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: responses[Math.floor(Math.random() * responses.length)],
-            timestamp: new Date().toISOString(),
-          },
-        ]);
+        
+        const assistantMessage = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: responses[Math.floor(Math.random() * responses.length)],
+          timestamp: new Date()
+        };
+
+        setMessages(prev => [...prev, assistantMessage]);
       }
-    }, 450);
+    }, 500);
   };
 
   const handleNavigate = (section) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: `Want to go to "${section}"? Tell me what you’re trying to accomplish there and I’ll guide you step-by-step.`,
-        timestamp: new Date().toISOString(),
-      },
-    ]);
+    const assistantMessage = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `I can help you navigate to "${section}". This section typically contains ${section.toLowerCase()} related information and features. Would you like more specific guidance about what you can find there?`,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, assistantMessage]);
   };
 
-  const onKeyDown = (e) => {
-    if (e.key === "Enter") {
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -146,77 +152,85 @@ export function ChatbotPopup({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed bottom-6 right-6 z-[999999]">
+    <div className="fixed bottom-6 right-6 z-50">
       <div
-        className={[
-          "bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden",
-          "transition-all duration-300",
-          isMinimized ? "w-[360px] h-16" : "w-[420px] h-[640px]",
-        ].join(" ")}
+        className={`bg-white rounded-2xl shadow-2xl border border-gray-200 transition-all duration-300 ${
+          isMinimized ? 'w-80 h-16' : 'w-96 h-[600px]'
+        }`}
       >
-        {/* Header (matches your screenshot) */}
-        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-2xl">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center">
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="text-white font-semibold text-lg leading-none">AI Navigation Assistant</div>
-              <div className="text-blue-100 text-xs mt-1">Online</div>
+              <h3 className="font-semibold text-white">AI Navigation Assistant</h3>
+              <p className="text-xs text-blue-100">Online</p>
             </div>
           </div>
-
+          
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => setIsMinimized((v) => !v)}
-              className="h-9 w-9 rounded-lg text-white hover:bg-white/20 grid place-items-center"
-              aria-label="Minimize"
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsMinimized(!isMinimized)}
+              className="h-8 w-8 text-white hover:bg-white/20"
             >
               {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={onClose}
-              className="h-9 w-9 rounded-lg text-white hover:bg-white/20 grid place-items-center"
-              aria-label="Close"
+              className="h-8 w-8 text-white hover:bg-white/20"
             >
               <X className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         </div>
 
+        {/* Content */}
         {!isMinimized && (
           <>
-            {/* Messages */}
-            <div className="h-[500px] p-4 overflow-y-auto bg-white">
-              {messages.map((m) => (
-                <ChatMessage key={m.id} message={m} />
-              ))}
+            {/* Messages Area */}
+            <ScrollArea className="h-[440px] p-4">
+              <div>
+                {messages.map((message) => (
+                  <ChatMessage key={message.id} message={message} />
+                ))}
+                
+                {currentWebsite && (
+                  <WebsiteAnalysis
+                    data={currentWebsite}
+                    onNavigate={handleNavigate}
+                  />
+                )}
+                
+                <div ref={messagesEndRef} />
+              </div>
+            </ScrollArea>
 
-              {currentWebsite && (
-                <WebsiteAnalysis data={currentWebsite} onNavigate={handleNavigate} />
-              )}
-
-              <div ref={messagesEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="p-4 border-t border-gray-200 bg-white">
-              <div className="flex items-center gap-3">
-                <input
+            {/* Input Area */}
+            <div className="p-4 border-t border-gray-200">
+              <div className="flex gap-2">
+                <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  onKeyDown={onKeyDown}
+                  onKeyPress={handleKeyPress}
                   placeholder="Paste a website URL or ask a question..."
-                  className="flex-1 h-12 px-4 rounded-2xl bg-gray-50 border border-gray-200 outline-none focus:ring-2 focus:ring-blue-300"
+                  className="flex-1"
                 />
-                <button
+                <Button
                   onClick={handleSendMessage}
-                  className="h-12 w-12 rounded-2xl bg-blue-600 hover:bg-blue-700 grid place-items-center text-white shadow-sm"
-                  aria-label="Send"
+                  size="icon"
+                  className="bg-blue-600 hover:bg-blue-700 flex-shrink-0"
                 >
-                  <Send className="h-5 w-5" />
-                </button>
+                  <Send className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           </>
