@@ -6,6 +6,9 @@
     "default_title": "Toggle Assistant"
   },
   "permissions": ["scripting", "activeTab"],
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

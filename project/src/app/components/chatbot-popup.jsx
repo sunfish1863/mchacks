@@ -91,7 +91,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
         id: Date.now().toString(),
         role: "assistant",
         content: ctx.hostname
-          ? `You’re on ${ctx.hostname}. Ask me anything about this page.`
+          ? `You’re on ${window.location.href}. Ask me anything about this page.`
           : `Ask me anything about this page.`,
         timestamp: new Date(),
       },
@@ -205,6 +205,22 @@ export function ChatbotPopup({ isOpen, onClose }) {
     };
   }, [isResizing, resizeDirection, dimensions, offsets]);
 
+  const addAssistantMessage = (content) => {
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: (Date.now() + Math.random()).toString(),
+        role: "assistant",
+        content,
+        timestamp: new Date(),
+      },
+    ]);
+  };
+
+  const addAssistantError = (content) => {
+    addAssistantMessage(`Sorry, ${content}`);
+  };
+
   const handleSendMessage = async () => {
     const text = inputValue.trim();
     if (!text) return;
@@ -216,112 +232,72 @@ export function ChatbotPopup({ isOpen, onClose }) {
       timestamp: new Date(),
     };
 
-    // add user message ONCE
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
 
-    try {
-      const response = await fetch("http://localhost:8000/api/gumloop/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ website_url: text }),
-      });
-
-      const data = await response.json();
-
-      // If backend wrapped the real JSON inside data.body as a string:
-      let runId;
-      if (data?.body && typeof data.body === "string") {
-        runId = JSON.parse(data.body).run_id;
-      } else if (typeof data === "string") {
-        runId = JSON.parse(data).run_id;
-      } else {
-        runId = data.run_id;
-      }
-
-      console.log("Gumloop body:", data);
-      console.log("Gumloop runid:", runId);
-
-      if (!runId) {
-        throw new Error("No run_id received from Gumloop");
-      }
-
-      const pollInterval = setInterval(async () => {
-        try {
-          const statusResponse = await fetch(
-            `http://localhost:8000/api/gumloop/status/${runId}`
-          );
-
-          if (!statusResponse.ok) {
-            throw new Error(`Status HTTP ${statusResponse.status}`);
-          }
-
-          const statusData = await statusResponse.json();
-          console.log("Gumloop status data:", statusData);
-
-          if (statusData.state) {
-            if (statusData.state === "FAILED") {
-              clearInterval(pollInterval);
-              const assistantMessage = {
-                id: (Date.now() + 1).toString(),
-                role: "assistant",
-                content: statusData.log || "Run failed.",
-                timestamp: new Date(),
-              };
-              setMessages((prev) => [...prev, assistantMessage]);
-            } else if (statusData.state === "DONE") {
-              clearInterval(pollInterval);
-              const assistantMessage = {
-                id: (Date.now() + 1).toString(),
-                role: "assistant",
-                content: statusData.outputs?.output ?? "(No output returned.)",
-                timestamp: new Date(),
-              };
-              setMessages((prev) => [...prev, assistantMessage]);
-            }
-          } else if (statusData.error) {
-            clearInterval(pollInterval);
-            const errorMessage = {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              content: `Error: ${statusData.error}`,
-              timestamp: new Date(),
-            };
-            setMessages((prev) => [...prev, errorMessage]);
-          }
-        } catch (pollError) {
-          console.error("Polling error:", pollError);
-          clearInterval(pollInterval);
-          const errorMessage = {
-            id: (Date.now() + 1).toString(),
-            role: "assistant",
-            content: "Sorry, there was an error checking the response.",
-            timestamp: new Date(),
-          };
-          setMessages((prev) => [...prev, errorMessage]);
+    chrome.runtime.sendMessage(
+      {
+        type: "GUMLOOP_START",
+        payload: {
+          maps_url: window.location.href,
+          interests: text,
+        },
+      },
+      (startResponse) => {
+        if (!startResponse?.ok) {
+          addAssistantError("Failed to start Gumloop run.");
+          return;
         }
-      }, 3000);
-    } catch (error) {
-      console.error("Error sending message:", error);
-      const errorMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: "Sorry, there was an error connecting to the server.",
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
-    }
-  };
 
-  const handleNavigate = (section) => {
-    const assistantMessage = {
-      id: Date.now().toString(),
-      role: "assistant",
-      content: `I can help you navigate to "${section}". This section typically contains ${section.toLowerCase()} related information and features. Would you like more specific guidance about what you can find there?`,
-      timestamp: new Date(),
-    };
+        let runId;
+        const data = startResponse.data;
 
-    setMessages((prev) => [...prev, assistantMessage]);
+        if (data?.body && typeof data.body === "string") {
+          runId = JSON.parse(data.body).run_id;
+        } else if (typeof data === "string") {
+          runId = JSON.parse(data).run_id;
+        } else {
+          runId = data.run_id;
+        }
+
+        if (!runId) {
+          addAssistantError("No run_id received from Gumloop.");
+          return;
+        }
+
+        const pollInterval = setInterval(() => {
+          chrome.runtime.sendMessage(
+            { type: "GUMLOOP_STATUS", runId },
+            (statusResponse) => {
+              if (!statusResponse?.ok) {
+                clearInterval(pollInterval);
+                addAssistantError("Error checking Gumloop status.");
+                return;
+              }
+
+              const statusData = statusResponse.data;
+
+              if (statusData.state === "FAILED") {
+                clearInterval(pollInterval);
+                addAssistantMessage(statusData.log || "Run failed.");
+              }
+
+              if (statusData.state === "DONE") {
+                clearInterval(pollInterval);
+                addAssistantMessage(
+                  statusData.outputs?.output ?? "(No output returned.)"
+                );
+              }
+
+              if (statusData.error) {
+                clearInterval(pollInterval);
+                addAssistantError(statusData.error);
+              }
+            }
+          );
+        }, 3000);
+      }
+    );
   };
 
   const handleKeyPress = (e) => {
