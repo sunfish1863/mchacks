@@ -57,9 +57,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
   const [dimensions, setDimensions] = useState({ width: 384, height: 600 });
   const [offsets, setOffsets] = useState({ right: 24, bottom: 24 }); // bottom-6/right-6 (24px)
 
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizeDirection, setResizeDirection] = useState(null);
-
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
 
@@ -134,76 +131,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
     };
   }, [isDragging, dragStart, dimensions.width, dimensions.height]);
 
-  // Resize handlers (all sides + corners)
-  useEffect(() => {
-    if (!isResizing || !popupRef.current || !resizeDirection) return;
-
-    const minWidth = 320;
-    const minHeight = 400;
-    const pad = 12;
-
-    const startWidth = dimensions.width;
-    const startHeight = dimensions.height;
-
-    const startRight = offsets.right;
-    const startBottom = offsets.bottom;
-
-    const startLeft = window.innerWidth - startRight - startWidth;
-    const startTop = window.innerHeight - startBottom - startHeight;
-
-    const handleMouseMove = (e) => {
-      const mouseX = e.clientX;
-      const mouseY = e.clientY;
-
-      let newWidth = startWidth;
-      let newHeight = startHeight;
-      let newRight = startRight;
-      let newBottom = startBottom;
-
-      const maxWidth = window.innerWidth - pad * 2;
-      const maxHeight = window.innerHeight - pad * 2;
-
-      if (resizeDirection.includes("left")) {
-        newWidth = window.innerWidth - startRight - mouseX;
-      }
-
-      if (resizeDirection.includes("right")) {
-        newRight = window.innerWidth - mouseX;
-        newWidth = window.innerWidth - newRight - startLeft;
-      }
-
-      if (resizeDirection.includes("top")) {
-        newHeight = window.innerHeight - startBottom - mouseY;
-      }
-
-      if (resizeDirection.includes("bottom")) {
-        newBottom = window.innerHeight - mouseY;
-        newHeight = window.innerHeight - newBottom - startTop;
-      }
-
-      newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-      newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
-
-      newRight = Math.max(pad, Math.min(window.innerWidth - pad - newWidth, newRight));
-      newBottom = Math.max(pad, Math.min(window.innerHeight - pad - newHeight, newBottom));
-
-      setDimensions({ width: newWidth, height: newHeight });
-      setOffsets({ right: newRight, bottom: newBottom });
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      setResizeDirection(null);
-    };
-
-    document.addEventListener("mousemove", handleMouseMove);
-    document.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, [isResizing, resizeDirection, dimensions, offsets]);
 
   const addAssistantMessage = (content) => {
     setMessages((prev) => [
@@ -309,38 +236,29 @@ export function ChatbotPopup({ isOpen, onClose }) {
 
   if (!isOpen) return null;
 
-  const handleResizeStart = (direction) => (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsResizing(true);
-    setResizeDirection(direction);
-  };
-
   const handleDragStart = (e) => {
-    if (isResizing) return;
+  e.preventDefault();
+  e.stopPropagation();
 
-    e.preventDefault();
-    e.stopPropagation();
-
-    setIsDragging(true);
-    setDragStart({
-      startMouseX: e.clientX,
-      startMouseY: e.clientY,
-      startRight: offsets.right,
-      startBottom: offsets.bottom,
-    });
-  };
+  setIsDragging(true);
+  setDragStart({
+    startMouseX: e.clientX,
+    startMouseY: e.clientY,
+    startRight: offsets.right,
+    startBottom: offsets.bottom,
+  });
+};
 
   return (
     <div
       ref={popupRef}
       className="fixed z-50"
       style={{
-        right: `${offsets.right}px`,
-        bottom: `${offsets.bottom}px`,
-        width: isMinimized ? "320px" : `${dimensions.width}px`,
-        height: isMinimized ? "64px" : `${dimensions.height}px`,
-        transition: isResizing || isDragging ? "none" : "width 0.2s, height 0.2s",
+      right: `${offsets.right}px`,
+      bottom: `${offsets.bottom}px`,
+      width: isMinimized ? "320px" : `${dimensions.width}px`,
+      height: isMinimized ? "64px" : `${dimensions.height}px`,
+      transition: isDragging ? "none" : "width 0.2s, height 0.2s",
       }}
     >
       <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 relative h-full w-full flex flex-col">
@@ -389,53 +307,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
         </div>
 
         {/* Resize handles */}
-        {!isMinimized && (
-          <>
-            {/* Edges */}
-            <div
-              onMouseDown={handleResizeStart("left")}
-              className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-200/30 transition-colors rounded-l-2xl"
-              style={{ zIndex: 10 }}
-            />
-            <div
-              onMouseDown={handleResizeStart("right")}
-              className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-200/30 transition-colors rounded-r-2xl"
-              style={{ zIndex: 10 }}
-            />
-            <div
-              onMouseDown={handleResizeStart("top")}
-              className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-200/30 transition-colors rounded-t-2xl"
-              style={{ zIndex: 10 }}
-            />
-            <div
-              onMouseDown={handleResizeStart("bottom")}
-              className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-200/30 transition-colors rounded-b-2xl"
-              style={{ zIndex: 10 }}
-            />
-
-            {/* Corners */}
-            <div
-              onMouseDown={handleResizeStart("top-left")}
-              className="absolute top-0 left-0 w-6 h-6 cursor-nwse-resize hover:bg-blue-200/30 transition-colors rounded-tl-2xl"
-              style={{ zIndex: 11 }}
-            />
-            <div
-              onMouseDown={handleResizeStart("top-right")}
-              className="absolute top-0 right-0 w-6 h-6 cursor-nesw-resize hover:bg-blue-200/30 transition-colors rounded-tr-2xl"
-              style={{ zIndex: 11 }}
-            />
-            <div
-              onMouseDown={handleResizeStart("bottom-left")}
-              className="absolute bottom-0 left-0 w-6 h-6 cursor-nesw-resize hover:bg-blue-200/30 transition-colors rounded-bl-2xl"
-              style={{ zIndex: 11 }}
-            />
-            <div
-              onMouseDown={handleResizeStart("bottom-right")}
-              className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize hover:bg-blue-200/30 transition-colors rounded-br-2xl"
-              style={{ zIndex: 11 }}
-            />
-          </>
-        )}
 
         {/* Content */}
         {!isMinimized && (
