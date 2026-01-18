@@ -1,3 +1,4 @@
+// ChatbotPopup.jsx
 import { useState, useRef, useEffect } from "react";
 import { X, Minimize2, Maximize2, Send, Sparkles } from "lucide-react";
 import { ChatMessage } from "./chat-message";
@@ -59,6 +60,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   const popupRef = useRef(null);
   const messagesEndRef = useRef(null);
@@ -69,7 +71,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, isLoading]);
 
   // Get favicon on mount
   useEffect(() => {
@@ -131,7 +133,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
     };
   }, [isDragging, dragStart, dimensions.width, dimensions.height]);
 
-
   const addAssistantMessage = (content) => {
     setMessages((prev) => [
       ...prev,
@@ -161,6 +162,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
 
     setMessages((prev) => [...prev, userMessage]);
     setInputValue("");
+    setIsLoading(true);
 
     chrome.runtime.sendMessage(
       {
@@ -172,6 +174,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
       },
       (startResponse) => {
         if (!startResponse?.ok) {
+          setIsLoading(false);
           addAssistantError("Failed to start Gumloop run.");
           return;
         }
@@ -179,15 +182,22 @@ export function ChatbotPopup({ isOpen, onClose }) {
         let runId;
         const data = startResponse.data;
 
-        if (data?.body && typeof data.body === "string") {
-          runId = JSON.parse(data.body).run_id;
-        } else if (typeof data === "string") {
-          runId = JSON.parse(data).run_id;
-        } else {
-          runId = data.run_id;
+        try {
+          if (data?.body && typeof data.body === "string") {
+            runId = JSON.parse(data.body).run_id;
+          } else if (typeof data === "string") {
+            runId = JSON.parse(data).run_id;
+          } else {
+            runId = data.run_id;
+          }
+        } catch (e) {
+          setIsLoading(false);
+          addAssistantError("Could not parse Gumloop run_id.");
+          return;
         }
 
         if (!runId) {
+          setIsLoading(false);
           addAssistantError("No run_id received from Gumloop.");
           return;
         }
@@ -198,6 +208,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
             (statusResponse) => {
               if (!statusResponse?.ok) {
                 clearInterval(pollInterval);
+                setIsLoading(false);
                 addAssistantError("Error checking Gumloop status.");
                 return;
               }
@@ -206,19 +217,23 @@ export function ChatbotPopup({ isOpen, onClose }) {
 
               if (statusData.state === "FAILED") {
                 clearInterval(pollInterval);
+                setIsLoading(false);
                 addAssistantMessage(statusData.log || "Run failed.");
+                return;
               }
 
               if (statusData.state === "DONE") {
                 clearInterval(pollInterval);
-                addAssistantMessage(
-                  statusData.outputs?.output ?? "(No output returned.)"
-                );
+                setIsLoading(false);
+                addAssistantMessage(statusData.outputs?.output ?? "(No output returned.)");
+                return;
               }
 
               if (statusData.error) {
                 clearInterval(pollInterval);
+                setIsLoading(false);
                 addAssistantError(statusData.error);
+                return;
               }
             }
           );
@@ -237,31 +252,32 @@ export function ChatbotPopup({ isOpen, onClose }) {
   if (!isOpen) return null;
 
   const handleDragStart = (e) => {
-  e.preventDefault();
-  e.stopPropagation();
+    e.preventDefault();
+    e.stopPropagation();
 
-  setIsDragging(true);
-  setDragStart({
-    startMouseX: e.clientX,
-    startMouseY: e.clientY,
-    startRight: offsets.right,
-    startBottom: offsets.bottom,
-  });
-};
+    setIsDragging(true);
+    setDragStart({
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+      startRight: offsets.right,
+      startBottom: offsets.bottom,
+    });
+  };
 
   return (
     <div
       ref={popupRef}
       className="fixed z-50"
       style={{
-      right: `${offsets.right}px`,
-      bottom: `${offsets.bottom}px`,
-      width: isMinimized ? "320px" : `${dimensions.width}px`,
-      height: isMinimized ? "64px" : `${dimensions.height}px`,
-      transition: isDragging ? "none" : "width 0.2s, height 0.2s",
+        right: `${offsets.right}px`,
+        bottom: `${offsets.bottom}px`,
+        width: isMinimized ? "320px" : `${dimensions.width}px`,
+        height: isMinimized ? "64px" : `${dimensions.height}px`,
+        transition: isDragging ? "none" : "width 0.2s, height 0.2s",
       }}
     >
-      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 relative h-full w-full flex flex-col">
+      {/* Important: min-w-0 + overflow-hidden ensures inner flex children can shrink */}
+      <div className="bg-white rounded-2xl shadow-2xl border border-gray-200 relative h-full w-full flex flex-col min-w-0 overflow-hidden">
         {/* Header */}
         <div className="relative z-20 flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-2xl">
           <div className="flex items-center gap-3">
@@ -290,7 +306,11 @@ export function ChatbotPopup({ isOpen, onClose }) {
               onClick={() => setIsMinimized(!isMinimized)}
               className="h-8 w-8 text-white hover:bg-white/20"
             >
-              {isMinimized ? <Maximize2 className="h-4 w-4" /> : <Minimize2 className="h-4 w-4" />}
+              {isMinimized ? (
+                <Maximize2 className="h-4 w-4" />
+              ) : (
+                <Minimize2 className="h-4 w-4" />
+              )}
             </Button>
 
             <Button
@@ -306,22 +326,43 @@ export function ChatbotPopup({ isOpen, onClose }) {
           </div>
         </div>
 
-        {/* Resize handles */}
-
         {/* Content */}
         {!isMinimized && (
           <>
-            <ScrollArea className="flex-1 p-4 sm:p-6" style={{ maxHeight: "calc(100% - 120px)" }}>
-              <div>
+            {/* Important: w-full + min-w-0 + overflow-hidden prevents overflow growth */}
+            <ScrollArea className="flex-1 min-h-0 w-full min-w-0 overflow-hidden">
+              {/* Important: min-w-0 allows messages to shrink within the scroll area */}
+              <div className="p-4 sm:p-6 min-w-0 w-full">
                 {messages.map((message) => (
                   <ChatMessage key={message.id} message={message} favicon={favicon} />
                 ))}
+
+                {isLoading && (
+                  <div className="flex justify-start mb-4 w-full min-w-0">
+                    <div
+                      className="min-w-0 max-w-[60%]"
+                      style={{
+                        marginLeft: "28px",
+                        padding: "8px 12px",
+                        borderRadius: "16px",
+                        fontSize: "14px",
+                        background: "#f3f4f6",
+                        color: "#111827",
+                        overflowWrap: "anywhere",
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      ...
+                    </div>
+                  </div>
+                )}
+
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
 
             <div className="p-4 sm:p-5 border-t border-gray-200">
-              <div className="flex gap-2 sm:gap-3">
+              <div className="flex gap-2 sm:gap-3 min-w-0">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
@@ -331,7 +372,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
                       ? `Ask a question about ${pageContext.hostname}...`
                       : "Ask a question..."
                   }
-                  className="flex-1 text-sm sm:text-base"
+                  className="flex-1 text-sm sm:text-base min-w-0"
                   style={{ backgroundColor: "#C9C9C9" }}
                 />
                 <Button
