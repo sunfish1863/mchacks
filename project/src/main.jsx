@@ -5,6 +5,7 @@ import App from "./App";
 import Layout from "./Layout";
 import Embed from "./Embed";
 import "./index.css";
+import "./styles/tailwind.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <BrowserRouter>
