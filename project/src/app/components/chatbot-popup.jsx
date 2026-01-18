@@ -59,7 +59,8 @@ export function ChatbotPopup({ isOpen, onClose }) {
   const [inputValue, setInputValue] = useState('');
   const [pageContext, setPageContext] = useState(null);
   const [favicon, setFavicon] = useState(null);
-  const [dimensions, setDimensions] = useState({ width: 384, height: 600 }); // w-96 = 384px, h-[600px] = 600px
+  const [dimensions, setDimensions] = useState({ width: 384, height: 600 });
+  const [offsets, setOffsets] = useState({ right: 24, bottom: 24 }); // matches bottom-6/right-6 (24px) // w-96 = 384px, h-[600px] = 600px
   const [isResizing, setIsResizing] = useState(false);
   const [resizeDirection, setResizeDirection] = useState(null);
   const popupRef = useRef(null);
@@ -98,50 +99,87 @@ export function ChatbotPopup({ isOpen, onClose }) {
     ]);
   }, []);
 
-  // Resize handlers
-  useEffect(() => {
-    if (!isResizing || !popupRef.current) return;
+  // Resize handlers (all sides + corners)
+useEffect(() => {
+  if (!isResizing || !popupRef.current || !resizeDirection) return;
 
-    const startRect = popupRef.current.getBoundingClientRect();
-    const startDimensions = dimensions;
-    const startX = window.innerWidth - startRect.right;
-    const startY = window.innerHeight - startRect.bottom;
+  const minWidth = 320;
+  const minHeight = 400;
 
-    const handleMouseMove = (e) => {
-      const minWidth = 320;
-      const minHeight = 400;
-      const maxWidth = window.innerWidth - 48;
-      const maxHeight = window.innerHeight - 48;
+  // keep a little breathing room from the viewport edges
+  const pad = 12;
 
-      let newWidth = startDimensions.width;
-      let newHeight = startDimensions.height;
+  const startRect = popupRef.current.getBoundingClientRect();
+  const startWidth = dimensions.width;
+  const startHeight = dimensions.height;
 
-      if (resizeDirection.includes('right') || resizeDirection === 'bottom-right') {
-        const rightEdge = window.innerWidth - e.clientX;
-        newWidth = Math.min(maxWidth, Math.max(minWidth, window.innerWidth - rightEdge - startX));
-      }
+  const startRight = offsets.right;
+  const startBottom = offsets.bottom;
 
-      if (resizeDirection.includes('bottom') || resizeDirection === 'bottom-right') {
-        const bottomEdge = window.innerHeight - e.clientY;
-        newHeight = Math.min(maxHeight, Math.max(minHeight, window.innerHeight - bottomEdge - startY));
-      }
+  // derive left/top from right/bottom anchoring
+  const startLeft = window.innerWidth - startRight - startWidth;
+  const startTop = window.innerHeight - startBottom - startHeight;
 
-      setDimensions({ width: newWidth, height: newHeight });
-    };
+  const handleMouseMove = (e) => {
+    const mouseX = e.clientX;
+    const mouseY = e.clientY;
 
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      setResizeDirection(null);
-    };
+    let newWidth = startWidth;
+    let newHeight = startHeight;
+    let newRight = startRight;
+    let newBottom = startBottom;
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    const maxWidth = window.innerWidth - pad * 2;
+    const maxHeight = window.innerHeight - pad * 2;
 
-    return () => {
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [isResizing, resizeDirection]);
+    // LEFT: right stays fixed, left edge follows mouse
+    if (resizeDirection.includes("left")) {
+      newWidth = (window.innerWidth - startRight) - mouseX;
+    }
+
+    // RIGHT: left stays fixed, right edge follows mouse
+    if (resizeDirection.includes("right")) {
+      newRight = window.innerWidth - mouseX;
+      newWidth = window.innerWidth - newRight - startLeft;
+    }
+
+    // TOP: bottom stays fixed, top edge follows mouse
+    if (resizeDirection.includes("top")) {
+      newHeight = (window.innerHeight - startBottom) - mouseY;
+    }
+
+    // BOTTOM: top stays fixed, bottom edge follows mouse
+    if (resizeDirection.includes("bottom")) {
+      newBottom = window.innerHeight - mouseY;
+      newHeight = window.innerHeight - newBottom - startTop;
+    }
+
+    // clamp sizes
+    newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+    newHeight = Math.max(minHeight, Math.min(maxHeight, newHeight));
+
+    // clamp offsets so window doesn't drift offscreen
+    newRight = Math.max(pad, Math.min(window.innerWidth - pad - newWidth, newRight));
+    newBottom = Math.max(pad, Math.min(window.innerHeight - pad - newHeight, newBottom));
+
+    setDimensions({ width: newWidth, height: newHeight });
+    setOffsets({ right: newRight, bottom: newBottom });
+  };
+
+  const handleMouseUp = () => {
+    setIsResizing(false);
+    setResizeDirection(null);
+  };
+
+  document.addEventListener("mousemove", handleMouseMove);
+  document.addEventListener("mouseup", handleMouseUp);
+
+  return () => {
+    document.removeEventListener("mousemove", handleMouseMove);
+    document.removeEventListener("mouseup", handleMouseUp);
+  };
+}, [isResizing, resizeDirection, dimensions, offsets]);
+
 
   const handleSendMessage = async () => {
     const text = inputValue.trim();
@@ -287,12 +325,14 @@ export function ChatbotPopup({ isOpen, onClose }) {
   return (
     <div
       ref={popupRef}
-      className="fixed bottom-6 right-6 z-50"
-      style={{
-        width: isMinimized ? '320px' : `${dimensions.width}px`,
-        height: isMinimized ? '64px' : `${dimensions.height}px`,
-        transition: isResizing ? 'none' : 'width 0.2s, height 0.2s',
-      }}
+      className="fixed z-50"
+style={{
+  right: `${offsets.right}px`,
+  bottom: `${offsets.bottom}px`,
+  width: isMinimized ? '320px' : `${dimensions.width}px`,
+  height: isMinimized ? '64px' : `${dimensions.height}px`,
+  transition: isResizing ? 'none' : 'width 0.2s, height 0.2s',
+}}
     >
       <div
         className={`bg-white rounded-2xl shadow-2xl border border-gray-200 relative h-full w-full flex flex-col ${
@@ -306,7 +346,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h3 className="font-semibold text-white text-base sm:text-lg">AI Navigation Assistant</h3>
+              <h3 className="font-semibold text-white text-base sm:text-lg">Browsy</h3>
               <p className="text-xs sm:text-sm text-blue-100">Online</p>
             </div>
           </div>
@@ -332,28 +372,55 @@ export function ChatbotPopup({ isOpen, onClose }) {
         </div>
 
         {/* Resize handles */}
-        {!isMinimized && (
-          <>
-            {/* Right edge */}
-            <div
-              onMouseDown={handleResizeStart('right')}
-              className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-200/30 transition-colors rounded-r-2xl"
-              style={{ zIndex: 10 }}
-            />
-            {/* Bottom edge */}
-            <div
-              onMouseDown={handleResizeStart('bottom')}
-              className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-200/30 transition-colors rounded-b-2xl"
-              style={{ zIndex: 10 }}
-            />
-            {/* Bottom-right corner */}
-            <div
-              onMouseDown={handleResizeStart('bottom-right')}
-              className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize hover:bg-blue-200/30 transition-colors rounded-br-2xl"
-              style={{ zIndex: 10 }}
-            />
-          </>
-        )}
+        {/* Resize handles */}
+{!isMinimized && (
+  <>
+    {/* Edges */}
+    <div
+      onMouseDown={handleResizeStart("left")}
+      className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-200/30 transition-colors rounded-l-2xl"
+      style={{ zIndex: 10 }}
+    />
+    <div
+      onMouseDown={handleResizeStart("right")}
+      className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-200/30 transition-colors rounded-r-2xl"
+      style={{ zIndex: 10 }}
+    />
+    <div
+      onMouseDown={handleResizeStart("top")}
+      className="absolute top-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-200/30 transition-colors rounded-t-2xl"
+      style={{ zIndex: 10 }}
+    />
+    <div
+      onMouseDown={handleResizeStart("bottom")}
+      className="absolute bottom-0 left-0 right-0 h-2 cursor-ns-resize hover:bg-blue-200/30 transition-colors rounded-b-2xl"
+      style={{ zIndex: 10 }}
+    />
+
+    {/* Corners */}
+    <div
+      onMouseDown={handleResizeStart("top-left")}
+      className="absolute top-0 left-0 w-6 h-6 cursor-nwse-resize hover:bg-blue-200/30 transition-colors rounded-tl-2xl"
+      style={{ zIndex: 11 }}
+    />
+    <div
+      onMouseDown={handleResizeStart("top-right")}
+      className="absolute top-0 right-0 w-6 h-6 cursor-nesw-resize hover:bg-blue-200/30 transition-colors rounded-tr-2xl"
+      style={{ zIndex: 11 }}
+    />
+    <div
+      onMouseDown={handleResizeStart("bottom-left")}
+      className="absolute bottom-0 left-0 w-6 h-6 cursor-nesw-resize hover:bg-blue-200/30 transition-colors rounded-bl-2xl"
+      style={{ zIndex: 11 }}
+    />
+    <div
+      onMouseDown={handleResizeStart("bottom-right")}
+      className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize hover:bg-blue-200/30 transition-colors rounded-br-2xl"
+      style={{ zIndex: 11 }}
+    />
+  </>
+)}
+
 
         {/* Content */}
         {!isMinimized && (
