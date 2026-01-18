@@ -143,7 +143,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
     };
   }, [isResizing, resizeDirection]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     const text = inputValue.trim();
     if (!text) return;
 
@@ -155,20 +155,117 @@ export function ChatbotPopup({ isOpen, onClose }) {
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const messageText = inputValue;
     setInputValue('');
 
-    // Placeholder response (backend team will replace this)
-    setTimeout(() => {
-      const ctx = pageContext?.hostname ? ` on ${pageContext.hostname}` : "";
-      const assistantMessage = {
+    try {
+      const response = await fetch('http://localhost:8000/api/gumloop/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ website_url: messageText }),
+      });
+
+      const data = await response.json();
+      // if (!response.ok) {
+      //   throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      // }
+      //console.log("Gumloop status:", response.status);
+
+      // If backend wrapped the real JSON inside data.body as a string:
+      let runId;
+      if (data?.body && typeof data.body === "string") {
+        runId = JSON.parse(data.body).run_id;
+      } else if (typeof data === "string") {
+        runId = JSON.parse(data).run_id;
+      } else {
+        runId = data.run_id;
+      }
+      console.log("Gumloop body:", data);
+      console.log("Gumloop runid:", runId);
+
+      if (!runId) {
+        throw new Error('No run_id received from Gumloop');
+      }
+
+      // Poll for status every 3 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const statusResponse = await fetch(`http://localhost:8000/api/gumloop/status/${runId}`);
+          if (!statusResponse.ok) {
+            throw new Error(`Status HTTP ${statusResponse.status}`);
+          }
+
+          const statusData = await statusResponse.json();
+          console.log("get ping");
+          // Assume statusData has 'result' when completed, or 'error'
+          console.log("Gumloop status data:", statusData);
+          if (statusData.state) {
+            if (statusData.state === 'FAILED') {
+              clearInterval(pollInterval);
+              const assistantMessage = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: statusData.log,
+                timestamp: new Date()
+              };
+              setMessages(prev => [...prev, assistantMessage]);
+            } else if (statusData.state === 'DONE') {
+              clearInterval(pollInterval);
+              const assistantMessage = {
+                id: (Date.now() + 1).toString(),
+                role: 'assistant',
+                content: statusData.outputs.output,
+                timestamp: new Date()
+              };
+              setMessages(prev => [...prev, assistantMessage]);
+            }
+          } else if (statusData.error) {
+            clearInterval(pollInterval);
+            const errorMessage = {
+              id: (Date.now() + 1).toString(),
+              role: 'assistant',
+              content: `Error: ${statusData.error}`,
+              timestamp: new Date()
+            };
+            setMessages(prev => [...prev, errorMessage]);
+          }
+          // If neither, continue polling
+        } catch (pollError) {
+          console.error('Polling error:', pollError);
+          clearInterval(pollInterval);
+          const errorMessage = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            content: 'Sorry, there was an error checking the response.',
+            timestamp: new Date()
+          };
+          setMessages(prev => [...prev, errorMessage]);
+        }
+      }, 3000);  // Poll every 3 seconds
+
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Got it${ctx}. (Backend reply will go here.)`,
+        content: 'Sorry, there was an error connecting to the server.',
         timestamp: new Date()
       };
+      setMessages(prev => [...prev, errorMessage]);
+    }
+  };
 
-      setMessages(prev => [...prev, assistantMessage]);
-    }, 300);
+  const handleNavigate = (section) => {
+    const assistantMessage = {
+      id: Date.now().toString(),
+      role: 'assistant',
+      content: `I can help you navigate to "${section}". This section typically contains ${section.toLowerCase()} related information and features. Would you like more specific guidance about what you can find there?`,
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, assistantMessage]);
   };
 
   const handleKeyPress = (e) => {
