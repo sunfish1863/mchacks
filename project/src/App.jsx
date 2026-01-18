@@ -1,8 +1,11 @@
+// project/src/App.jsx
 import { useState } from "react";
+import { ChatbotPopup } from "./app/components/chatbot-popup";
 
 export default function App() {
   const [url, setUrl] = useState("https://www.youtube.com/embed/d-WlaSwe-Kg");
   const [input, setInput] = useState(url);
+  const [chatOpen, setChatOpen] = useState(true);
 
   function go(e) {
     e.preventDefault();
@@ -16,7 +19,6 @@ export default function App() {
     <div style={{ height: "100vh", width: "100vw", overflow: "hidden" }}>
       {/* Full-screen "browser" layer */}
       <div style={{ position: "fixed", inset: 0, zIndex: 1 }}>
-        {/* Simple address bar */}
         <form
           onSubmit={go}
           style={{
@@ -70,23 +72,32 @@ export default function App() {
         />
       </div>
 
-      {/* Chatbot iframe on top */}
-      <iframe
-        title="Chatbot"
-        src="/embed"
-        style={{
-          position: "fixed",
-          bottom: 20,
-          right: 20,
-          width: 360,
-          height: 520,
-          border: "none",
-          borderRadius: 16,
-          boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
-          zIndex: 999999, // higher than full-screen iframe
-          background: "transparent",
-        }}
-      />
+      {/* NEW chatbot UI */}
+      <ChatbotPopup isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+
+      {/* Re-open button */}
+      {!chatOpen && (
+        <button
+          onClick={() => setChatOpen(true)}
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            width: 56,
+            height: 56,
+            borderRadius: 999,
+            border: "none",
+            background: "#2563eb",
+            color: "white",
+            fontSize: 18,
+            cursor: "pointer",
+            boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
+            zIndex: 999999,
+          }}
+        >
+          💬
+        </button>
+      )}
     </div>
   );
 }
