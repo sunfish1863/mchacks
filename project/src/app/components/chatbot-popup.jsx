@@ -6,6 +6,40 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 
+// Read website data from current page DOM
+const getWebsiteDataFromDOM = () => {
+  const url = window.location.href;
+  const title = document.title || new URL(url).hostname;
+
+  const headings = Array.from(document.querySelectorAll("h1, h2"))
+    .slice(0, 8)
+    .map((h) => h.innerText.trim())
+    .filter(Boolean);
+
+  const links = Array.from(document.querySelectorAll("a[href]"))
+    .map((a) => {
+      const text = (a.innerText || "").trim();
+      const href = a.getAttribute("href");
+      return { text, href };
+    })
+    .filter((l) => l.text.length >= 2)
+    .slice(0, 8);
+
+  return {
+    url,
+    title,
+    summary:
+      headings.length
+        ? `This page has ${headings.length} main headings. Top topics: ${headings.slice(0, 3).join(" • ")}`
+        : `I can help you navigate this page. I found ${links.length} useful links.`,
+    sections: links.map((l) => ({
+      name: l.text,
+      description: l.href,
+      icon: "navigation",
+    })),
+  };
+};
+
 // Mock website data generator
 const getMockWebsiteData = (url) => {
   const domain = url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0];
@@ -76,6 +110,25 @@ export function ChatbotPopup({ isOpen, onClose }) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-read current page once when injected (for extension)
+  useEffect(() => {
+    // Only auto-read if we're in a browser extension context and haven't read yet
+    if (typeof chrome !== 'undefined' && chrome.runtime && !currentWebsite) {
+      const data = getWebsiteDataFromDOM();
+      setCurrentWebsite(data);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `You're on: ${data.title}. I pulled some navigation items from this page.`,
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  }, []);
 
   const handleSendMessage = () => {
     if (!inputValue.trim()) return;
@@ -149,8 +202,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
       handleSendMessage();
     }
   };
-
-  if (!isOpen) return null;
 
   if (!isOpen) return null;
 
