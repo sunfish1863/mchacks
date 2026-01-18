@@ -1,91 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { X, Minimize2, Maximize2, Send, Sparkles } from "lucide-react";
 import { ChatMessage } from "./chat-message";
-import { WebsiteAnalysis } from "./website-analysis";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { ScrollArea } from "./ui/scroll-area";
 
-// Read website data from current page DOM
-const getWebsiteDataFromDOM = () => {
+// Minimal page context (no headings/links)
+const getPageContext = () => {
   const url = window.location.href;
-  const title = document.title || new URL(url).hostname;
-
-  const headings = Array.from(document.querySelectorAll("h1, h2"))
-    .slice(0, 8)
-    .map((h) => h.innerText.trim())
-    .filter(Boolean);
-
-  const links = Array.from(document.querySelectorAll("a[href]"))
-    .map((a) => {
-      const text = (a.innerText || "").trim();
-      const href = a.getAttribute("href");
-      return { text, href };
-    })
-    .filter((l) => l.text.length >= 2)
-    .slice(0, 8);
-
-  return {
-    url,
-    title,
-    summary:
-      headings.length
-        ? `This page has ${headings.length} main headings. Top topics: ${headings.slice(0, 3).join(" • ")}`
-        : `I can help you navigate this page. I found ${links.length} useful links.`,
-    sections: links.map((l) => ({
-      name: l.text,
-      description: l.href,
-      icon: "navigation",
-    })),
-  };
-};
-
-// Mock website data generator
-const getMockWebsiteData = (url) => {
-  const domain = url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0];
-
-  const mockData = {
-    "amazon.com": {
-      url,
-      title: "Amazon – Online Shopping",
-      summary:
-        "Amazon is a global e-commerce platform offering millions of products across various categories. Shop for electronics, books, clothing, and more with fast delivery options.",
-      sections: [
-        { name: "Shop by Department", description: "Browse all product categories", icon: "shop" },
-        { name: "Today's Deals", description: "View current discounts and offers", icon: "shop" },
-        { name: "Your Account", description: "Manage orders and settings", icon: "info" },
-        { name: "Customer Service", description: "Get help with your orders", icon: "contact" },
-      ],
-    },
-    "github.com": {
-      url,
-      title: "GitHub – Developer Platform",
-      summary:
-        "GitHub is a platform for version control and collaboration. Developers use it to build, ship, and maintain software projects together.",
-      sections: [
-        { name: "Explore Repositories", description: "Discover trending projects", icon: "navigation" },
-        { name: "Your Profile", description: "View your contributions", icon: "info" },
-        { name: "Create Repository", description: "Start a new project", icon: "shop" },
-        { name: "Documentation", description: "Learn about features", icon: "info" },
-      ],
-    },
-    default: {
-      url,
-      title: domain.charAt(0).toUpperCase() + domain.slice(1),
-      summary: `${domain} is a website offering services and information. I can help you navigate it more easily.`,
-      sections: [
-        { name: "Home", description: "Return to homepage", icon: "navigation" },
-        { name: "Products/Services", description: "View main offerings", icon: "shop" },
-        { name: "About", description: "Learn more about the company", icon: "info" },
-        { name: "Contact", description: "Get in touch", icon: "contact" },
-      ],
-    },
-  };
-
-  for (const key in mockData) {
-    if (domain.includes(key)) return mockData[key];
-  }
-  return mockData.default;
+  const hostname = window.location.hostname || "";
+  const title = document.title || hostname;
+  return { url, hostname, title };
 };
 
 // Get website favicon
@@ -93,7 +18,7 @@ const getWebsiteFavicon = () => {
   try {
     // Try multiple methods to get favicon
     const domain = window.location.origin;
-    
+
     // Method 1: Check for link rel="icon" tags
     const linkTags = document.querySelectorAll('link[rel*="icon"]');
     if (linkTags.length > 0) {
@@ -102,7 +27,7 @@ const getWebsiteFavicon = () => {
         return href.startsWith('http') ? href : new URL(href, domain).href;
       }
     }
-    
+
     // Method 2: Try common favicon paths
     const commonPaths = ['/favicon.ico', '/favicon.png', '/apple-touch-icon.png'];
     for (const path of commonPaths) {
@@ -110,7 +35,7 @@ const getWebsiteFavicon = () => {
       // We'll return it and let the browser handle 404s
       return testUrl;
     }
-    
+
     // Method 3: Google favicon service as fallback
     const hostname = new URL(domain).hostname;
     return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
@@ -127,12 +52,12 @@ export function ChatbotPopup({ isOpen, onClose }) {
     {
       id: '1',
       role: 'assistant',
-      content: 'Hi! 👋 I\'m your website navigation assistant. Paste any website URL and I\'ll help you understand and navigate it.',
+      content: "Hi 👋 Ask me anything about the page you’re on.",
       timestamp: new Date()
     }
   ]);
   const [inputValue, setInputValue] = useState('');
-  const [currentWebsite, setCurrentWebsite] = useState(null);
+  const [pageContext, setPageContext] = useState(null);
   const [favicon, setFavicon] = useState(null);
   const [dimensions, setDimensions] = useState({ width: 384, height: 600 }); // w-96 = 384px, h-[600px] = 600px
   const [isResizing, setIsResizing] = useState(false);
@@ -155,23 +80,22 @@ export function ChatbotPopup({ isOpen, onClose }) {
     setFavicon(fav);
   }, []);
 
-  // Auto-read current page once when injected (for extension)
+  // Capture which site we're on (extension injection context or normal web context)
   useEffect(() => {
-    // Only auto-read if we're in a browser extension context and haven't read yet
-    if (typeof chrome !== 'undefined' && chrome.runtime && !currentWebsite) {
-      const data = getWebsiteDataFromDOM();
-      setCurrentWebsite(data);
+    const ctx = getPageContext();
+    setPageContext(ctx);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          role: "assistant",
-          content: `You're on: ${data.title}. I pulled some navigation items from this page.`,
-          timestamp: new Date(),
-        },
-      ]);
-    }
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: ctx.hostname
+          ? `You’re on ${ctx.hostname}. Ask me anything about this page.`
+          : `Ask me anything about this page.`,
+        timestamp: new Date(),
+      },
+    ]);
   }, []);
 
   // Resize handlers
@@ -196,7 +120,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
         const rightEdge = window.innerWidth - e.clientX;
         newWidth = Math.min(maxWidth, Math.max(minWidth, window.innerWidth - rightEdge - startX));
       }
-      
+
       if (resizeDirection.includes('bottom') || resizeDirection === 'bottom-right') {
         const bottomEdge = window.innerHeight - e.clientY;
         newHeight = Math.min(maxHeight, Math.max(minHeight, window.innerHeight - bottomEdge - startY));
@@ -220,69 +144,31 @@ export function ChatbotPopup({ isOpen, onClose }) {
   }, [isResizing, resizeDirection]);
 
   const handleSendMessage = () => {
-    if (!inputValue.trim()) return;
+    const text = inputValue.trim();
+    if (!text) return;
 
     const userMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputValue,
+      content: text,
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
 
-    // Check if the message contains a URL
-    const urlRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-zA-Z0-9-]+\.[a-zA-Z]{2,})/g;
-    const urls = inputValue.match(urlRegex);
-
+    // Placeholder response (backend team will replace this)
     setTimeout(() => {
-      if (urls && urls.length > 0) {
-        let url = urls[0];
-        if (!url.startsWith('http')) {
-          url = 'https://' + url;
-        }
+      const ctx = pageContext?.hostname ? ` on ${pageContext.hostname}` : "";
+      const assistantMessage = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `Got it${ctx}. (Backend reply will go here.)`,
+        timestamp: new Date()
+      };
 
-        const websiteData = getMockWebsiteData(url);
-        setCurrentWebsite(websiteData);
-
-        const assistantMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: `Great! I've analyzed ${websiteData.title}. Here's what I found:`,
-          timestamp: new Date()
-        };
-
-        setMessages(prev => [...prev, assistantMessage]);
-      } else {
-        // General response for non-URL messages
-        const responses = [
-          "I'm here to help you navigate websites! Just paste a URL and I'll break it down for you.",
-          "Feel free to ask me anything about website navigation, or share a URL to get started!",
-          "I can help you understand any website better. Try pasting a URL like amazon.com or github.com!"
-        ];
-        
-        const assistantMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: responses[Math.floor(Math.random() * responses.length)],
-          timestamp: new Date()
-        };
-
-        setMessages(prev => [...prev, assistantMessage]);
-      }
-    }, 500);
-  };
-
-  const handleNavigate = (section) => {
-    const assistantMessage = {
-      id: Date.now().toString(),
-      role: 'assistant',
-      content: `I can help you navigate to "${section}". This section typically contains ${section.toLowerCase()} related information and features. Would you like more specific guidance about what you can find there?`,
-      timestamp: new Date()
-    };
-
-    setMessages(prev => [...prev, assistantMessage]);
+      setMessages(prev => [...prev, assistantMessage]);
+    }, 300);
   };
 
   const handleKeyPress = (e) => {
@@ -302,7 +188,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
   };
 
   return (
-    <div 
+    <div
       ref={popupRef}
       className="fixed bottom-6 right-6 z-50"
       style={{
@@ -327,7 +213,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
               <p className="text-xs sm:text-sm text-blue-100">Online</p>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -381,14 +267,7 @@ export function ChatbotPopup({ isOpen, onClose }) {
                 {messages.map((message) => (
                   <ChatMessage key={message.id} message={message} favicon={favicon} />
                 ))}
-                
-                {currentWebsite && (
-                  <WebsiteAnalysis
-                    data={currentWebsite}
-                    onNavigate={handleNavigate}
-                  />
-                )}
-                
+
                 <div ref={messagesEndRef} />
               </div>
             </ScrollArea>
@@ -400,7 +279,11 @@ export function ChatbotPopup({ isOpen, onClose }) {
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Paste a website URL or ask a question..."
+                  placeholder={
+                    pageContext?.hostname
+                      ? `Ask a question about ${pageContext.hostname}...`
+                      : "Ask a question..."
+                  }
                   className="flex-1 text-sm sm:text-base"
                   style={{ backgroundColor: '#C9C9C9' }}
                 />
