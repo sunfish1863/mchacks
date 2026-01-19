@@ -79,24 +79,6 @@ export function ChatbotPopup({ isOpen, onClose }) {
     setFavicon(fav);
   }, []);
 
-  // Capture which site we're on
-  useEffect(() => {
-    const ctx = getPageContext();
-    setPageContext(ctx);
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        role: "assistant",
-        content: ctx.hostname
-          ? `You’re on ${window.location.href}. Ask me anything about this page.`
-          : `Ask me anything about this page.`,
-        timestamp: new Date(),
-      },
-    ]);
-  }, []);
-
   // Drag handlers (drag from top middle handle)
   useEffect(() => {
     if (!isDragging || !dragStart) return;
